@@ -1,6 +1,3 @@
-Of course, here is a sample GitHub README markdown to introduce your game.
-
----
 
 # ☕ Coffee Cup Shooter 3D
 
