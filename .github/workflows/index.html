@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Bean Cup Shooter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; height: 100vh;
+        }
+        #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+        #gameCanvas { display: block; }
+        #crosshair {
+            position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; z-index: 1;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        .crosshair-dot {
+            position: absolute; width: 7px; height: 7px;
+            background: #e67e22; border-radius: 50%; left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 8px #e67e22;
+        }
+        #ui-container {
+            position: absolute; left: 0; top: 0; width: 100%; z-index: 2;
+            display: flex; flex-direction: column; justify-content: space-between; height: 100%;
+            pointer-events: none;
+        }
+        #header {
+            margin: 30px; display: flex; gap: 25px; pointer-events: none;
+        }
+        .stat-box {
+            background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px 28px; text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .stat-value { font-size: 2rem; font-weight: bold; color: #f1c40f; }
+        .stat-label { font-size: 0.9rem; letter-spacing: 2px; color: #eee; }
+        #legend {
+            position: absolute; right: 30px; bottom: 30px;
+            background: rgba(0,0,0,0.5); border-radius: 10px; padding: 16px;
+        }
+        #legend h3 { margin: 0 0 7px 0; font-size: 1rem; color: #e67e22; }
+        .legend-items { display: grid; grid-template-columns: auto 1fr; gap: 12px; }
+        .legend-color {
+            width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff;
+        }
+        .legend-label { font-size: 0.95rem; }
+        #controls {
+            position: absolute; left: 50%; bottom: 35px; transform: translateX(-50%);
+            background: rgba(0,0,0,0.3); border-radius: 24px; padding: 12px 24px;
+            display: flex; gap: 16px;
+        }
+        .control-item { display: flex; flex-direction: column; align-items: center; }
+        .key {
+            width: 38px; height: 38px; background: #2c3e50; border-radius: 7px;
+            display: flex; align-items: center; justify-content: center; color: #e67e22;
+            font-weight: bold; font-size: 1.05rem; margin-bottom: 4px; border: 2px solid #e67e22;
+        }
+        .control-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
+        #game-title {
+            position: absolute; left: 50%; top: 16%; transform: translateX(-50%);
+            font-size: 2.6rem; font-weight: 800; color: #e67e22;
+            letter-spacing: 2px; z-index: 3;
+            text-shadow: 0 0 18px #e67e22;
+            pointer-events: none;
+        }
+        #modal {
+            position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 100;
+            background: rgba(30,30,46,0.94); display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.35s;
+        }
+        #modal.active { opacity: 1; pointer-events: all; }
+        .modal-content {
+            background: rgba(60,60,80,0.9); border-radius: 18px; padding: 36px 44px;
+            text-align: center; box-shadow: 0 10px 40px #111c;
+        }
+        .modal-content h1 { font-size: 2.3rem; margin-bottom: 14px; color: #e67e22; }
+        .modal-content p { font-size: 1.1rem; margin: 11px 0; color: #ecf0f1; }
+        #final-score { font-size: 2.2rem; color: #f1c40f; font-weight: 700; margin: 15px 0 23px 0; }
+        .button-container { display: flex; gap: 18px; justify-content: center; margin-top: 10px; }
+        button {
+            background: linear-gradient(135deg, #e67e22, #d35400);
+            color: #fff; border: none; border-radius: 25px; padding: 13px 28px;
+            font-size: 1.1rem; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 15px #0005;
+            transition: background 0.2s, transform 0.2s;
+        }
+        button.secondary { background: linear-gradient(135deg, #3498db, #2980b9); }
+        button:hover { transform: translateY(-2px) scale(1.03); }
+        .hit-effect {
+            position: absolute; font-size: 1.7rem; font-weight: bold; color: #f1c40f;
+            text-shadow: 0 0 7px #f1c40f; pointer-events: none;
+            z-index: 15;
+            animation: floatUp 1s forwards;
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(-45px); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="game-title">COFFEE CUP SHOOTER</div>
+        <div id="crosshair">
+            <div class="crosshair-dot"></div>
+        </div>
+        <div id="ui-container">
+            <div id="header">
+                <div class="stat-box"><div id="score" class="stat-value">0</div><div class="stat-label">Score</div></div>
+                <div class="stat-box"><div id="timer" class="stat-value">60</div><div class="stat-label">Time</div></div>
+                <div class="stat-box"><div id="streak" class="stat-value">0</div><div class="stat-label">Streak</div></div>
+            </div>
+            <div id="legend">
+                <h3>CUP VALUES</h3>
+                <div class="legend-items">
+                    <div class="legend-color" style="background:#e74c3c"></div>
+                    <div class="legend-label">10 Points</div>
+                    <div class="legend-color" style="background:#3498db"></div>
+                    <div class="legend-label">20 Points</div>
+                    <div class="legend-color" style="background:#2ecc71"></div>
+                    <div class="legend-label">30 Points</div>
+                    <div class="legend-color" style="background: linear-gradient(45deg, #e74c3c, #3498db, #2ecc71);"></div>
+                    <div class="legend-label">50 Points (Rare)</div>
+                </div>
+            </div>
+            <div id="controls">
+                <div class="control-item"><div class="key">Mouse</div><div class="control-label">Aim</div></div>
+                <div class="control-item"><div class="key">LMB</div><div class="control-label">Shoot</div></div>
+                <div class="control-item"><div class="key">P</div><div class="control-label">Pause</div></div>
+            </div>
+        </div>
+        <div id="modal">
+            <div class="modal-content">
+                <h1>COFFEE CUP SHOOTER</h1>
+                <p>Shoot the flying coffee cups with your coffee bean shooter.<br>
+                   Each color cup gives different points. Rare multi-color cups are worth the most!</p>
+                <div id="final-score">Score: 0</div>
+                <div class="button-container">
+                    <button id="startButton">START GAME</button>
+                    <button id="howToButton" class="secondary">HOW TO PLAY</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module">
+    // --- THREE.js SCENE & PHYSICS ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 16);
+
+    const renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById('gameCanvas'),
+        antialias: true,
+        alpha: true
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 20, 10); dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    // Ground
+    const groundGeo = new THREE.PlaneGeometry(100, 100);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.95 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // --- PHYSICS ---
+    const world = new CANNON.World();
+    world.gravity.set(0, -22, 0);
+    world.broadphase = new CANNON.NaiveBroadphase();
+    const groundBody = new CANNON.Body({ mass: 0 });
+    groundBody.addShape(new CANNON.Plane());
+    groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
+    world.addBody(groundBody);
+
+    // --- GAME STATE ---
+    let score = 0, timeLeft = 60, streak = 0, gameActive = false;
+    let timerInterval, cupInterval;
+    const objectsToUpdate = [];
+
+    // --- CUP TYPES ---
+    const cupTypes = [
+        { color: 0xe74c3c, points: 10, name: 'red', speed: 1.0 },
+        { color: 0x3498db, points: 20, name: 'blue', speed: 1.35 },
+        { color: 0x2ecc71, points: 30, name: 'green', speed: 1.7 },
+        { color: 0x9b59b6, points: 50, name: 'rare', gradient: true, speed: 2.2 }
+    ];
+
+    // --- DOM Elements ---
+    const scoreEl = document.getElementById('score');
+    const timerEl = document.getElementById('timer');
+    const streakEl = document.getElementById('streak');
+    const modalEl = document.getElementById('modal');
+    const startButton = document.getElementById('startButton');
+    const finalScoreEl = document.getElementById('final-score');
+    const canvas = document.getElementById('gameCanvas');
+
+    // --- CUP CREATION ---
+    function createCup() {
+        const typeIndex = Math.random() > 0.9 ? 3 : Math.floor(Math.random()*3);
+        const type = cupTypes[typeIndex];
+
+        const group = new THREE.Group();
+
+        // Cup body
+        const cupGeo = new THREE.CylinderGeometry(1, 0.8, 2, 32);
+        let cupMat;
+        if (type.gradient) {
+            // Gradient cup
+            const cupCanvas = document.createElement('canvas');
+            cupCanvas.width = 256; cupCanvas.height = 256;
+            const ctx = cupCanvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0,0,256,0);
+            grad.addColorStop(0, '#e74c3c');
+            grad.addColorStop(0.5, '#3498db');
+            grad.addColorStop(1, '#2ecc71');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,256,256);
+            const tex = new THREE.CanvasTexture(cupCanvas);
+            cupMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.3, metalness: 0.2 });
+        } else {
+            cupMat = new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.3, metalness: 0.2 });
+        }
+        const cupMesh = new THREE.Mesh(cupGeo, cupMat); cupMesh.castShadow = true;
+        group.add(cupMesh);
+
+        // Handle
+        const handleGeo = new THREE.TorusGeometry(0.5, 0.14, 16, 32, Math.PI*1.5);
+        const handleMesh = new THREE.Mesh(handleGeo, cupMat);
+        handleMesh.position.x = 0.85; handleMesh.rotation.z = Math.PI/2; handleMesh.castShadow = true;
+        group.add(handleMesh);
+
+        // Steam
+        const steamGeo = new THREE.ConeGeometry(0.2, 0.9, 8);
+        const steamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.6 });
+        const steam = new THREE.Mesh(steamGeo, steamMat);
+        steam.position.y = 1.35; steam.rotation.x = Math.PI;
+        group.add(steam);
+
+        // Position
+        const x = (Math.random()-0.5) * 26;
+        const z = (Math.random()-0.5) * 24;
+        group.position.set(x, 15, z);
+        group.userData = { points: type.points, speed: type.speed, hit: false };
+
+        scene.add(group);
+
+        // Physics
+        const cupBody = new CANNON.Body({
+            mass: 1,
+            shape: new CANNON.Cylinder(1, 0.8, 2, 16),
+            position: new CANNON.Vec3(x, 15, z),
+            linearDamping: 0.13, angularDamping: 0.12
+        });
+        cupBody.angularVelocity.set(
+            (Math.random()-0.5)*2,
+            (Math.random()-0.5)*2,
+            (Math.random()-0.5)*2
+        );
+        world.addBody(cupBody);
+
+        objectsToUpdate.push({
+            mesh: group,
+            body: cupBody,
+            isCup: true,
+            type: type
+        });
+    }
+
+    // --- SHOOTING MECHANICS ---
+    function createCoffeeBean(position) {
+        const beanGeo = new THREE.SphereGeometry(0.3, 16, 16);
+        const beanMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.49 });
+        const beanMesh = new THREE.Mesh(beanGeo, beanMat);
+        beanMesh.castShadow = true;
+        beanMesh.position.copy(position);
+        scene.add(beanMesh);
+
+        const beanBody = new CANNON.Body({
+            mass: 0.3,
+            shape: new CANNON.Sphere(0.3),
+            position: new CANNON.Vec3(position.x, position.y, position.z),
+            material: new CANNON.Material({ friction: 0.1, restitution: 0.2 }),
+        });
+
+        // Shoot forward
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        dir.multiplyScalar(39);
+        beanBody.velocity.set(dir.x, dir.y, dir.z);
+        world.addBody(beanBody);
+
+        objectsToUpdate.push({
+            mesh: beanMesh,
+            body: beanBody,
+            isBean: true,
+            shotTime: Date.now()
+        });
+    }
+
+    function shoot() {
+        if(!gameActive) return;
+        createCoffeeBean(camera.position.clone().add(new THREE.Vector3(0,-0.5,0)));
+    }
+
+    // --- CUP DISAPPEARANCE EFFECT ---
+    function createCupDisappearanceEffect(position, points) {
+        const effect = document.createElement('div');
+        effect.className = 'hit-effect';
+        effect.textContent = `+${points}`;
+        const screenPos = position.clone().project(camera);
+        const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+        effect.style.left = `${x}px`; effect.style.top = `${y}px`;
+        document.getElementById('game-container').appendChild(effect);
+        setTimeout(()=>effect.remove(), 1000);
+    }
+
+    // --- GAME LOGIC ---
+    function startGame() {
+        modalEl.classList.remove('active');
+        gameActive = true;
+        score = 0; streak = 0; timeLeft = 60;
+        scoreEl.textContent = score;
+        streakEl.textContent = streak;
+        timerEl.textContent = timeLeft;
+        // Remove objects
+        objectsToUpdate.forEach(obj=>{
+            scene.remove(obj.mesh); world.removeBody(obj.body);
+        });
+        objectsToUpdate.length = 0;
+        // Timers
+        timerInterval = setInterval(()=>{
+            timeLeft--;
+            timerEl.textContent = timeLeft;
+            if(timeLeft <= 0) endGame();
+        },1000);
+        cupInterval = setInterval(createCup, 1500);
+        for(let i=0;i<5;i++) createCup();
+    }
+    function endGame() {
+        gameActive = false;
+        clearInterval(timerInterval);
+        clearInterval(cupInterval);
+        finalScoreEl.textContent = `Score: ${score}`;
+        modalEl.classList.add('active');
+    }
+
+    function checkCollisions() {
+        for(let i=objectsToUpdate.length-1; i>=0; i--) {
+            const obj = objectsToUpdate[i];
+            // Remove old beans
+            if(obj.isBean && Date.now()-obj.shotTime>5000) {
+                scene.remove(obj.mesh); world.removeBody(obj.body);
+                objectsToUpdate.splice(i,1); continue;
+            }
+            // Bean-cup collision
+            if(obj.isBean) {
+                for(let j=objectsToUpdate.length-1; j>=0; j--) {
+                    const target = objectsToUpdate[j];
+                    if(target.isCup && !target.mesh.userData.hit) {
+                        if(obj.body.position.distanceTo(target.body.position)<1.5) {
+                            target.mesh.userData.hit = true;
+                            score += target.mesh.userData.points;
+                            streak++;
+                            scoreEl.textContent = score;
+                            streakEl.textContent = streak;
+                            createCupDisappearanceEffect(target.mesh.position, target.mesh.userData.points);
+                            scene.remove(target.mesh); world.removeBody(target.body);
+                            objectsToUpdate.splice(j,1);
+                            scene.remove(obj.mesh); world.removeBody(obj.body);
+                            objectsToUpdate.splice(i,1);
+                            break;
+                        }
+                    }
+                }
+            }
+            // Remove cups that hit ground
+            if(obj.isCup && obj.body.position.y<0.5 && !obj.mesh.userData.hit) {
+                streak = 0; streakEl.textContent = streak;
+                scene.remove(obj.mesh); world.removeBody(obj.body);
+                objectsToUpdate.splice(i,1);
+            }
+        }
+    }
+
+    // --- MOUSE AIM ---
+    let mouseX=0, mouseY=0, targetRotX=0, targetRotY=0;
+    document.addEventListener('mousemove', e=>{
+        if(gameActive) {
+            mouseX = (e.clientX / window.innerWidth)*2-1;
+            mouseY = -(e.clientY / window.innerHeight)*2+1;
+            targetRotY = mouseX * Math.PI/4;
+            targetRotX = mouseY * Math.PI/8;
+        }
+    });
+
+    // --- ANIMATION LOOP ---
+    function animate() {
+        requestAnimationFrame(animate);
+        if(gameActive) {
+            camera.rotation.x += (targetRotX-camera.rotation.x)*0.055;
+            camera.rotation.y += (targetRotY-camera.rotation.y)*0.055;
+            world.step(1/60);
+            for(const obj of objectsToUpdate) {
+                if(obj.mesh && obj.body) {
+                    obj.mesh.position.copy(obj.body.position);
+                    obj.mesh.quaternion.copy(obj.body.quaternion);
+                    if(obj.isCup)
+                        obj.mesh.position.y += Math.sin(Date.now()*0.002)*0.05;
+                }
+            }
+            checkCollisions();
+        }
+        renderer.render(scene, camera);
+    }
+
+    // --- EVENT BINDINGS ---
+    startButton.addEventListener('click', startGame);
+    canvas.addEventListener('click', shoot);
+    window.addEventListener('resize', ()=>{
+        camera.aspect = window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    animate();
+    modalEl.classList.add('active');
+    </script>
+</body>
+</html>
